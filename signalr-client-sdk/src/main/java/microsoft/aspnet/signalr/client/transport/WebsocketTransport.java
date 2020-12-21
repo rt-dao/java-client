@@ -6,21 +6,17 @@ See License.txt in the project root for license information.
 
 package microsoft.aspnet.signalr.client.transport;
 
+import com.google.gson.Gson;
+
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 
-import com.google.gson.Gson;
-
-import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.exceptions.InvalidDataException;
-import org.java_websocket.framing.Framedata;
-import org.java_websocket.handshake.ServerHandshake;
-import org.java_websocket.util.Charsetfunctions;
-
 import microsoft.aspnet.signalr.client.ConnectionBase;
-import microsoft.aspnet.signalr.client.LogLevel;
 import microsoft.aspnet.signalr.client.Logger;
 import microsoft.aspnet.signalr.client.SignalRFuture;
 import microsoft.aspnet.signalr.client.UpdateableCancellableFuture;
@@ -65,12 +61,18 @@ public class WebsocketTransport extends HttpClientTransport {
         final String groupsToken = connection.getGroupsToken() != null ? connection.getGroupsToken() : "";
         final String connectionData = connection.getConnectionData() != null ? connection.getConnectionData() : "";
 
+        String connectionUrl = connection.getUrl();
+        if (connectionUrl.startsWith("https")) {
+            connectionUrl = connectionUrl.replaceFirst("https", "wss");
+        } else if (connectionUrl.startsWith("http")) {
+            connectionUrl = connectionUrl.replaceFirst("http", "ws");
+        }
 
         String url = null;
         try {
-            url = connection.getUrl() + "signalr/" + connectionString + '?'
-                    + "connectionData=" + URLEncoder.encode(URLEncoder.encode(connectionData, "UTF-8"), "UTF-8")
-                    + "&connectionToken=" + URLEncoder.encode(URLEncoder.encode(connectionToken, "UTF-8"), "UTF-8")
+            url = connectionUrl + connectionString + '?'
+                    + "connectionData=" + URLEncoder.encode(connectionData, "UTF-8")
+                    + "&connectionToken=" + URLEncoder.encode(connectionToken, "UTF-8")
                     + "&groupsToken=" + URLEncoder.encode(groupsToken, "UTF-8")
                     + "&messageId=" + URLEncoder.encode(messageId, "UTF-8")
                     + "&transport=" + URLEncoder.encode(transport, "UTF-8");
@@ -89,7 +91,7 @@ public class WebsocketTransport extends HttpClientTransport {
             return mConnectionFuture;
         }
 
-        mWebSocketClient = new WebSocketClient(uri) {
+        mWebSocketClient = new WebSocketClient(uri, connection.getHeaders()) {
             @Override
             public void onOpen(ServerHandshake serverHandshake) {
                 mConnectionFuture.setResult(null);
@@ -110,36 +112,36 @@ public class WebsocketTransport extends HttpClientTransport {
                 mWebSocketClient.close();
             }
 
-            @Override
-            public void onFragment(Framedata frame) {
-                try {
-                    String decodedString = Charsetfunctions.stringUtf8(frame.getPayloadData());
-
-                    if(decodedString.equals("]}")){
-                        return;
-                    }
-
-                    if(decodedString.endsWith(":[") || null == mPrefix){
-                        mPrefix = decodedString;
-                        return;
-                    }
-
-                    String simpleConcatenate = mPrefix + decodedString;
-
-                    if(isJSONValid(simpleConcatenate)){
-                        onMessage(simpleConcatenate);
-                    }else{
-                        String extendedConcatenate = simpleConcatenate + "]}";
-                        if (isJSONValid(extendedConcatenate)) {
-                            onMessage(extendedConcatenate);
-                        } else {
-                            log("invalid json received:" + decodedString, LogLevel.Critical);
-                        }
-                    }
-                } catch (InvalidDataException e) {
-                    e.printStackTrace();
-                }
-            }
+//            @Override
+//            public void onFragment(Framedata frame) {
+//                try {
+//                    String decodedString = Charsetfunctions.stringUtf8(frame.getPayloadData());
+//
+//                    if(decodedString.equals("]}")){
+//                        return;
+//                    }
+//
+//                    if(decodedString.endsWith(":[") || null == mPrefix){
+//                        mPrefix = decodedString;
+//                        return;
+//                    }
+//
+//                    String simpleConcatenate = mPrefix + decodedString;
+//
+//                    if(isJSONValid(simpleConcatenate)){
+//                        onMessage(simpleConcatenate);
+//                    }else{
+//                        String extendedConcatenate = simpleConcatenate + "]}";
+//                        if (isJSONValid(extendedConcatenate)) {
+//                            onMessage(extendedConcatenate);
+//                        } else {
+//                            log("invalid json received:" + decodedString, LogLevel.Critical);
+//                        }
+//                    }
+//                } catch (InvalidDataException e) {
+//                    e.printStackTrace();
+//                }
+//            }
         };
         mWebSocketClient.connect();
 
